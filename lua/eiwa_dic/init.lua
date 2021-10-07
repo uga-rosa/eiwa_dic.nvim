@@ -2,6 +2,7 @@ local M = {}
 
 local a = vim.api
 local f = vim.fn
+local uv = vim.loop
 
 local json = require("eiwa_dic.json")
 
@@ -9,15 +10,30 @@ local pwd = (function()
   return debug.getinfo(1).source:sub(2):match("^(.*/).*$")
 end)()
 
-local verb = (function()
-  local data = io.open(pwd .. "verb.json"):read("a")
-  return json.decode(data)
-end)()
+local verb = {
+  path = pwd .. "verb.json",
+  json = "",
+}
+local dict = {
+  path = pwd .. "dict.json",
+  json = "",
+}
 
-local dict = (function()
-  local data = io.open(pwd .. "dict.json"):read("a")
-  return json.decode(data)
-end)()
+for _, datas in pairs({ verb, dict }) do
+  uv.fs_open(datas.path, "r", 438, function(err1, fd)
+    assert(not err1, err1)
+    uv.fs_fstat(fd, function(err2, stat)
+      assert(not err2, err2)
+      uv.fs_read(fd, stat.size, 0, function(err3, data)
+        assert(not err3, err3)
+        uv.fs_close(fd, function(err4)
+          assert(not err4, err4)
+          datas.json = json.decode(data)
+        end)
+      end)
+    end)
+  end)
+end
 
 local function code_decision(num)
   if num < 127 then
@@ -93,8 +109,8 @@ function M.popup()
   if word == "" then
     return
   end
-  word = verb[word] or word
-  local meaning = dict[word]
+  word = verb.json[word] or word
+  local meaning = dict.json[word]
   if meaning then
     local max = math.floor(a.nvim_win_get_width(0) * 0.6)
     local lines, width = cut(meaning, max)
